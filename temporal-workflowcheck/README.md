@@ -1,6 +1,20 @@
 
 (under active development)
 
+### FAQ
+
+* Why not CheckStyle or ErrorProne or something else off the shelf?
+  * Need to make homemade checks for transitive anyways, so no benefit
+  * Tried using ErrorProne but it's a pain across compilation units and transitive (same pain as annotation processor)
+* Why not a custom annotation processor?
+  * It's a bit tough to use the JDK compiler API and walk source and bytecode
+  * No good caching across compilation units
+* Why not Soot or SootUp?
+  * Soot is now becoming SootUp
+  * SootUp is in a development stage and has lots of little errors (can't even handle annotations not in view)
+* Why .properties config instead of something more modern?
+  * We don't want runtime dependencies
+
 ### Configuration Properties Format
 
 * Configuration is via properties files, but many properties files can be referenced/merged via CLI/env (TODO: which?)

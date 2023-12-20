@@ -11,22 +11,33 @@
   * No good caching across compilation units
 * Why not Soot or SootUp?
   * Soot is now becoming SootUp
-  * SootUp is in a development stage and has lots of little errors (can't even handle annotations not in view)
+  * SootUp is in a development stage and has lots of little errors (can't even handle annotations not on classpath)
+* Why not ClassGraph?
+  * That library doesn't give which methods call other methods (so not a call graph)
 * Why .properties config instead of something more modern?
   * We don't want runtime dependencies
 
 ### Configuration Properties Format
 
 * Configuration is via properties files, but many properties files can be referenced/merged via CLI/env (TODO: which?)
-* To mark something as invalid, `temporal.workflowcheck.invalid.[fully-qualified-thing]=true` 
-* To mark something as valid (overrides invalid by default), `temporal.workflowcheck.valid.[fully-qualified-thing]=true`
-* To exclude from checking, `temporal.workflowcheck.exclude.[fully-qualified-thing]=true`
-* To include (overrides exclude by default), `temporal.workflowcheck.include.[fully-qualified-thing]=true`
-* By default, valid overrides invalid and include overrides exclude
-  * Can be given priority to affect order,
-    `temporal.workflowcheck.[invalid|valid|exclude|include].[fully-qualified-thing].priority=123`. Must be signed
-    integer. Default is 0, highest number is highest priority.
-  * For the same priority, more specific qualified things are applied over least specific
-  * For the same priority and same qualified thing, later-provided cli/env files' versions replace earlier
-* "Fully qualified thing" is `path/to/Class` to apply to all methods, or it can have `.method` to apply to all overloads
-  of that method name or `.method(` with the rest of the exact signature to apply to exact overloads.
+* For the rules below, `[fully-qualified-thing]` is `path/to/Class.method(LDesc;)V` style, but parameters can be left
+  off to match all overloads of the method, or the method can be left off to match the entire class, or the class can be
+  left off to match entire packages
+* To mark something as invalid or valid, set `temporal.workflowcheck.invalid.[fully-qualified-thing]` to `true` or
+  `false` respectively
+* To mark something as excluded or included, set `temporal.workflowcheck.exclude.[fully-qualified-thing]` to `true` or
+  `false` respectively
+* More specific properties override less specific, after that, latter property files override earlier ones
+
+### TODO
+
+* Normalize method descriptor to not include anything after `()` (i.e. remove return type) for purposes of descriptor
+  equality checks inside of code
+* Provide config prebuilding where you can give the classpath, a set of packages, and an output file and the classpath
+  will be scanned for all conforming classes, and a new properties file will be created that represents all found
+  invalid calls, and scan exclusions at the top (Note, may need some way in config to provide the invalid calls that
+  it is calling). Then use this prebuilding to generate for Java 21's standard library to improve performance.
+* Document that method checks are not hierarchical but fixed for performance reasons
+* Document how collection iteration is by default considered unsafe but that it can be set as safe
+* Support configuration via env vars and CLI params too
+* SARIF output

@@ -1,0 +1,10 @@
+/samples/gradle/.gradle
+/samples/gradle/.idea
+/samples/gradle/build
+
+/samples/maven/.idea
+/samples/maven/target
+
+/temporal-workflowcheck/.gradle
+/temporal-workflowcheck/.idea
+/temporal-workflowcheck/build

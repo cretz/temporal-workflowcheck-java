@@ -10,10 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
@@ -69,9 +66,23 @@ public class WorkflowCheckTest {
 
   @Test
   public void testWorkflowCheck() throws IOException {
+    // Load properties
+    var configProps = new Properties();
+    try (var is = getClass().getResourceAsStream("testdata/workflowcheck.properties")) {
+      configProps.load(is);
+    }
     // Collect infos
-    var config = Config.fromProperties(Config.defaultProperties());
-    var infos = new WorkflowCheck(config).findInvalidWorkflowImpls(System.getProperty("java.class.path"));
+    var config = Config.fromProperties(Config.defaultProperties(), configProps);
+    var infos = new WorkflowCheck(config).findWorkflowClasses(System.getProperty("java.class.path"));
+    for (var info : infos) {
+      for (var methods : info.methods.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
+        for (var method : methods.getValue()) {
+          if (method.workflowImpl != null) {
+            System.out.println(Printer.methodText(info, methods.getKey(), method));
+          }
+        }
+      }
+    }
 
     // Collect actual/expected lists (we accept perf penalty of not being sets)
     var actual = InvalidCallAssertion.fromClassInfos(infos);
@@ -105,6 +116,7 @@ public class WorkflowCheckTest {
 
     private static final String[] SOURCE_FILES = new String[]{
             "io/temporal/workflowcheck/testdata/BadCalls.java",
+            "io/temporal/workflowcheck/testdata/Configured.java",
             "io/temporal/workflowcheck/testdata/Suppression.java",
             "io/temporal/workflowcheck/testdata/UnsafeIteration.java"
     };
@@ -149,33 +161,27 @@ public class WorkflowCheckTest {
     static List<InvalidCallAssertion> fromClassInfos(List<ClassInfo> infos) {
       var assertions = new ArrayList<InvalidCallAssertion>();
       for (var info : infos) {
-        // Only invalid methods that are also workflow impls, then collect
-        // their invalid calls
-        if (info.getWorkflowMethodImpls() == null || info.getInvalidMethods() == null) {
-          continue;
-        }
-        for (var impl : info.getWorkflowMethodImpls().entrySet()) {
-          var method = info.getInvalidMethods().get(impl.getKey());
-          if (method == null || method.invalidCalls() == null) {
-            continue;
-          }
-          for (var call : method.invalidCalls()) {
-            ClassInfo.InvalidCall causeCall = null;
-            if (call.classInfo() != null && call.classInfo().getInvalidMethods() != null) {
-              var causeMethod = call.classInfo().getInvalidMethods().get(call.method());
-              if (causeMethod != null && causeMethod.invalidCalls() != null) {
-                causeCall = causeMethod.invalidCalls().get(0);
+        for (var methods : info.methods.entrySet()) {
+          for (var method : methods.getValue()) {
+            // Only invalid workflow impls with calls
+            if (method.workflowImpl != null && method.invalidCalls != null) {
+              for (var call : method.invalidCalls) {
+                // Find first cause
+                ClassInfo.MethodInvalidCallInfo causeCall = null;
+                if (call.resolvedInvalidMethod != null && call.resolvedInvalidMethod.invalidCalls != null) {
+                  causeCall = call.resolvedInvalidMethod.invalidCalls.get(0);
+                }
+                assertions.add(new InvalidCallAssertion(
+                        info.fileName,
+                        Objects.requireNonNull(call.line),
+                        info.name,
+                        methods.getKey() + method.descriptor,
+                        call.className,
+                        call.methodName + call.methodDescriptor,
+                        causeCall == null ? null : causeCall.className,
+                        causeCall == null ? null : causeCall.methodName + causeCall.methodDescriptor));
               }
             }
-            assertions.add(new InvalidCallAssertion(
-                    info.getFileName(),
-                    call.line(),
-                    info.getClassName(),
-                    impl.getKey(),
-                    call.className(),
-                    call.method(),
-                    causeCall == null ? null : causeCall.className(),
-                    causeCall == null ? null : causeCall.method()));
           }
         }
       }

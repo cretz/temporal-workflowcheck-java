@@ -1,12 +1,11 @@
 package io.temporal.workflowcheck;
 
+import org.objectweb.asm.Opcodes;
+
 import java.io.IOException;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 
 public class WorkflowCheck {
   public static void suppressWarnings() {}
@@ -28,22 +27,73 @@ public class WorkflowCheck {
     this.config = config;
   }
 
-  public List<ClassInfo> findInvalidWorkflowImpls(String... classPaths) throws IOException {
-    var infosWithInvalidImpls = new ArrayList<ClassInfo>();
-    try (var cp = new ClassPath(classPaths)) {
-      var context = new ClassInfoLoader(config, cp.classLoader);
-      // Read all non-built-in classes to find workflows
-      for (String className : cp.classes) {
-        var info = context.load(className);
-        // Check if there are any impls and any of them are also invalid methods
-        if (info != null && info.workflowMethodImpls != null && info.invalidMethods != null &&
-                !Collections.disjoint(info.workflowMethodImpls.keySet(), info.invalidMethods.keySet())) {
-          infosWithInvalidImpls.add(info);
+  public List<ClassInfo> findWorkflowClasses(String... classPaths) throws IOException {
+    // Load all non-built-in classes' methods to find workflow impls
+    var workflowClasses = new ArrayList<ClassInfo>();
+    try (var classPath = new ClassPath(classPaths)) {
+      var loader = new Loader(config, classPath);
+      for (String className : classPath.classes) {
+        var info = loader.loadClass(className);
+        var hasWorkflowImpl = false;
+        for (var methodEntry : info.methods.entrySet()) {
+          for (var method : methodEntry.getValue()) {
+            // Workflow impl method must be non-static public with a body
+            if ((method.access & Opcodes.ACC_STATIC) == 0 &&
+                    (method.access & Opcodes.ACC_PUBLIC) != 0 &&
+                    (method.access & Opcodes.ACC_ABSTRACT) == 0 &&
+                    (method.access & Opcodes.ACC_NATIVE) == 0) {
+              method.workflowImpl = loader.findWorkflowImplInfo(
+                      info, info.name, methodEntry.getKey(), method.descriptor);
+              // We need to check for method validity only if it's an impl
+              if (method.workflowImpl != null) {
+                hasWorkflowImpl = true;
+                loader.processMethodValidity(method, Collections.newSetFromMap(new IdentityHashMap<>()));
+              }
+            }
+          }
+        }
+        if (hasWorkflowImpl) {
+          workflowClasses.add(info);
         }
       }
     }
-    // Sort the infos by the class name for deterministic output
-    infosWithInvalidImpls.sort(Comparator.comparing(i -> i.className));
-    return infosWithInvalidImpls;
+
+    // Now that we have processed all invalidity on each class, trim off
+    // unimportant class pieces
+    var trimmed = Collections.<ClassInfo>newSetFromMap(new IdentityHashMap<>());
+    workflowClasses.forEach(info -> trimUnimportantClassInfo(info, trimmed));
+
+    // Sort classes by class name and return
+    workflowClasses.sort(Comparator.comparing(c -> c.name));
+    return workflowClasses;
   }
+
+  private void trimUnimportantClassInfo(ClassInfo info, Set<ClassInfo> done) {
+    done.add(info);
+    // Remove unimportant methods (i.e. without workflow info and are valid),
+    // and remove entire list if none left
+    info.methods.entrySet().removeIf(methods -> {
+      methods.getValue().removeIf(method -> {
+        // If the method has an impl and decl class not already trimmed, trim it
+        if (method.workflowImpl != null && !done.contains(method.workflowImpl.declClassInfo)) {
+          trimUnimportantClassInfo(method.workflowImpl.declClassInfo, done);
+        }
+        // Recursively trim classes on calls too for each not already done
+        if (method.invalidCalls != null) {
+          for (var call : method.invalidCalls) {
+            if (call.resolvedInvalidClass != null && !done.contains(call.resolvedInvalidClass)) {
+              trimUnimportantClassInfo(call.resolvedInvalidClass, done);
+            }
+          }
+        }
+        // Set to remove if nothing important on it
+        return method.workflowDecl == null &&
+                method.workflowImpl == null &&
+                (method.configuredInvalid == null || method.configuredInvalid) &&
+                method.invalidCalls == null;
+      });
+      return methods.getValue().isEmpty();
+    });
+  }
+
 }

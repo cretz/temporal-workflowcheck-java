@@ -36,10 +36,16 @@ class DescriptorMatcher {
   void addFromProperties(String category, Properties props) {
     var prefix = "temporal.workflowcheck." + category + ".";
     for (var entry : props.entrySet()) {
-      // Key is temporal.workflowcheck.<category>.<desc>=<true|false>
+      // Key is temporal.workflowcheck.<category>.<desc-sans-return>=<true|false>
       var key = (String) entry.getKey();
       if (!key.startsWith(prefix)) {
         continue;
+      }
+      // Sanity check to confirm methods with descriptors need to _not_ have
+      // return values
+      var closeParenIndex = key.lastIndexOf(')');
+      if (closeParenIndex > 0 && closeParenIndex != key.length() - 1) {
+        throw new IllegalArgumentException("Config key '" + key + "' should not have anything after ')'");
       }
       var desc = key.substring(31);
       var value = (String) entry.getValue();
@@ -55,8 +61,13 @@ class DescriptorMatcher {
 
   @Nullable
   Boolean check(String className, @Nullable String methodName, @Nullable String methodDescriptor) {
-    // Check full descriptor, then full sans params, then just method, then
-    // just method sans params, then FQCN, and then each parent package
+    // Check full descriptor sans return, then full sans params, then just
+    // method, then just method sans params, then FQCN, and then each parent
+    // package. We remove return values from the method descriptor since the
+    // map only allows arguments.
+    if (methodDescriptor != null) {
+      methodDescriptor = methodDescriptor.substring(0, methodDescriptor.indexOf(')') + 1);
+    }
 
     // Method name + descriptor doesn't have to be present to check class
     if (methodName != null) {
@@ -95,6 +106,14 @@ class DescriptorMatcher {
         }
       }
       invalid = descriptors.get(methodName);
+      if (invalid != null) {
+        return invalid;
+      }
+    }
+    // Unqualified class name
+    var slashIndex = className.lastIndexOf('/');
+    if (slashIndex > 0) {
+      var invalid = descriptors.get(className.substring(slashIndex + 1));
       if (invalid != null) {
         return invalid;
       }

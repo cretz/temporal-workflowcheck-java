@@ -20,6 +20,7 @@ class ClassPath implements AutoCloseable {
   }
 
   final URLClassLoader classLoader;
+  // Non-standard-library classes only here
   final List<String> classes = new ArrayList<>();
 
   ClassPath(String... classPaths) throws IOException {

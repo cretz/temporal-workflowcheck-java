@@ -82,10 +82,10 @@ public interface Suppression {
       WorkflowCheck.restoreWarnings();
       WorkflowCheck.restoreWarnings();
 
-      // LOG: WARNING - 1 warning suppression(s) not restored in io/temporal/workflowcheck/testdata/Suppression$SuppressionImpl.suppression()V
+      // LOG: WARNING - 1 warning suppression(s) not restored in io/temporal/workflowcheck/testdata/Suppression$SuppressionImpl.suppression
       WorkflowCheck.suppressWarnings("never-restored");
 
-      // LOG: WARNING - WorkflowCheck.suppressWarnings call not using string literal at io/temporal/workflowcheck/testdata/Suppression$SuppressionImpl.suppression()V (Suppression.java:90)
+      // LOG: WARNING - WorkflowCheck.suppressWarnings call not using string literal at io/temporal/workflowcheck/testdata/Suppression$SuppressionImpl.suppression (Suppression.java:90)
       var warningVar = "not-literal";
       WorkflowCheck.suppressWarnings(warningVar);
     }

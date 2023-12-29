@@ -14,8 +14,13 @@
   * SootUp is in a development stage and has lots of little errors (can't even handle annotations not on classpath)
 * Why not ClassGraph?
   * That library doesn't give which methods call other methods (so not a call graph)
+* Why not SemGrep?
+  * Does not seem to support recursive call graph analysis to find invalid calls at arbitrary call depths
 * Why .properties config instead of something more modern?
   * We don't want runtime dependencies
+* Why does so much of the code do traditional looping instead of streaming, direct field access instead of
+  encapsulation, etc?
+  * This code is optimized for performance, but the user-facing API does follow proper practices
 
 ### Configuration Properties Format
 

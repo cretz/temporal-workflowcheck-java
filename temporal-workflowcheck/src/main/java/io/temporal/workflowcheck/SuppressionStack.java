@@ -1,11 +1,12 @@
 package io.temporal.workflowcheck;
 
 import javax.annotation.Nullable;
+import java.util.Deque;
 import java.util.LinkedList;
 
 class SuppressionStack {
   // If it's null, that means suppress all
-  private final LinkedList<DescriptorMatcher> stack = new LinkedList<>();
+  private final Deque<DescriptorMatcher> stack = new LinkedList<>();
 
   // If null or empty string array given, all things suppressed
   void push(@Nullable String[] specificDescriptors) {

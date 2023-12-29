@@ -3,41 +3,29 @@ package io.temporal.workflowcheck;
 import org.objectweb.asm.*;
 
 import javax.annotation.Nullable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 class ClassInfoVisitor extends ClassVisitor {
   private static final System.Logger logger = System.getLogger(ClassInfoVisitor.class.getName());
 
-  final ClassInfo info = new ClassInfo();
-  final ClassInfoLoading loading = new ClassInfoLoading();
-
-  private final ClassInfoLoader classInfoLoader;
+  final ClassInfo classInfo = new ClassInfo();
+  private final Config config;
   private final MethodHandler methodHandler = new MethodHandler();
-  // Keyed by unqualified method name + descriptor
-  @Nullable
-  private Map<String, ExternalWorkflowMethodDecl> workflowMethodDeclsInherited;
   @Nullable
   private SuppressionStack suppressionStack;
 
-  ClassInfoVisitor(ClassInfoLoader classInfoLoader) {
+  ClassInfoVisitor(Config config) {
     super(Opcodes.ASM9);
-    this.classInfoLoader = classInfoLoader;
+    this.config = config;
   }
 
   @Override
   public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-    info.className = name;
-    // Collect inherited method decls at any level
-    if (!ClassPath.isStandardLibraryClass(name)) {
-      if (superName != null) {
-        collectWorkflowMethodDeclsInherited(superName);
-      }
-      if (interfaces != null) {
-        for (var iface : interfaces) {
-          collectWorkflowMethodDeclsInherited(iface);
-        }
-      }
-    }
+    classInfo.access = access;
+    classInfo.name = name;
+    classInfo.superClass = superName;
+    classInfo.superInterfaces = interfaces;
   }
 
   @Override
@@ -47,46 +35,20 @@ class ClassInfoVisitor extends ClassVisitor {
 
   @Override
   public void visitSource(String source, String debug) {
-    info.fileName = source;
-  }
-
-  @Override
-  public void visitEnd() {
-    // Sort the calls inside every method by their line number
-    if (info.invalidMethods != null) {
-      for (var meth : info.invalidMethods.values()) {
-        if (meth.invalidCalls() != null) {
-          meth.invalidCalls().sort(Comparator.comparingInt(c -> c.line() != null ? c.line() : -1));
-        }
-      }
-    }
+    classInfo.fileName = source;
   }
 
   @Override
   public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-    // Check if this is a method with a body that is declared elsewhere. If it
-    // is, add as an impl. Note, we are intentionally not doing a proper
-    // override check here with covariant returns or generic signatures causing
-    // overload difference. We believe workflow methods are not allowed to
-    // differ in these ways allowing us to do a simple performant descriptor
-    // equality match.
-    // TODO(cretz): Add some extra check somewhere that will fail if a covariant
-    // return or a generic is used on a workflow method or its override.
-    var method = name + descriptor;
-    if ((access & Opcodes.ACC_ABSTRACT) == 0 && (access & Opcodes.ACC_NATIVE) == 0 &&
-            workflowMethodDeclsInherited != null) {
-      var externalDecl = workflowMethodDeclsInherited.get(method);
-      if (externalDecl != null) {
-        logger.log(System.Logger.Level.DEBUG, "Found workflow method impl {0}.{1}", info.className, method);
-        if (info.workflowMethodImpls == null) {
-          info.workflowMethodImpls = new HashMap<>(1);
-        }
-        info.workflowMethodImpls.put(method, new ClassInfo.WorkflowMethodImpl(externalDecl.declClass, externalDecl.decl));
-      }
-    }
+    // Add method to class
+    var methodInfo = new ClassInfo.MethodInfo(
+            access,
+            descriptor,
+            config.invalidMethods.check(classInfo.name, name, descriptor));
+    classInfo.methods.computeIfAbsent(name, k -> new ArrayList<>()).add(methodInfo);
 
     // Reset and reuse the handler
-    methodHandler.reset(access, method);
+    methodHandler.reset(name, methodInfo);
     return methodHandler;
   }
 
@@ -95,32 +57,6 @@ class ClassInfoVisitor extends ClassVisitor {
       return new SuppressionAttributeHandler();
     }
     return null;
-  }
-
-  private void collectWorkflowMethodDeclsInherited(String className) {
-    if (ClassPath.isStandardLibraryClass(className)) {
-      return;
-    }
-    var classInfo = classInfoLoader.load(className);
-    if (classInfo != null && classInfo.workflowMethodDecls != null) {
-      if (workflowMethodDeclsInherited == null) {
-        workflowMethodDeclsInherited = new HashMap<>(classInfo.workflowMethodDecls.size());
-      }
-      for (var entry : classInfo.workflowMethodDecls.entrySet()) {
-        workflowMethodDeclsInherited.put(entry.getKey(), new ExternalWorkflowMethodDecl(className, entry.getValue()));
-      }
-    }
-  }
-
-  private void markInvalid(String callingMethod, ClassInfo.InvalidCall call) {
-    // Get or create invalid method
-    if (info.invalidMethods == null) {
-      info.invalidMethods = new HashMap<>(1);
-    }
-    var invalidMethod = info.invalidMethods.computeIfAbsent(callingMethod, k ->
-            new ClassInfo.InvalidMethod(new ArrayList<>(1)));
-    // Add the invalid call
-    invalidMethod.invalidCalls().add(call);
   }
 
   private class SuppressionAttributeHandler extends AnnotationVisitor {
@@ -153,8 +89,8 @@ class ClassInfoVisitor extends ClassVisitor {
   }
 
   private class MethodHandler extends MethodVisitor {
-    private int methodAccess;
-    private String method;
+    private String methodName;
+    private ClassInfo.MethodInfo methodInfo;
     @Nullable
     private Integer methodLineNumber;
     private int methodSuppressions;
@@ -166,9 +102,9 @@ class ClassInfoVisitor extends ClassVisitor {
       super(Opcodes.ASM9);
     }
 
-    void reset(int methodAccess, String method) {
-      this.methodAccess = methodAccess;
-      this.method = method;
+    void reset(String methodName, ClassInfo.MethodInfo methodInfo) {
+      this.methodName = methodName;
+      this.methodInfo = methodInfo;
       this.methodLineNumber = null;
       this.methodSuppressions = 0;
       this.methodSuppressionAnnotation = false;
@@ -184,25 +120,11 @@ class ClassInfoVisitor extends ClassVisitor {
         return suppressionVisitor;
       }
 
-      // If this descriptor is a known decl kind, set as a decl
-      var declKind = ClassInfo.WorkflowMethodDeclKind.annotationDescriptors.get(descriptor);
+      // If this descriptor is a known workflow decl kind, set as a decl
+      var declKind = ClassInfo.MethodWorkflowDeclInfo.Kind.annotationDescriptors.get(descriptor);
       if (declKind != null) {
-        logger.log(System.Logger.Level.DEBUG, "Found workflow method decl {0}.{1}", info.className, method);
-        if (info.workflowMethodDecls == null) {
-          info.workflowMethodDecls = new HashMap<>(1);
-        }
-        var decl = new ClassInfo.WorkflowMethodDecl(declKind);
-        info.workflowMethodDecls.put(method, decl);
-        // If the method has a body (e.g. default on interface), add it as an
-        // impl of self. Otherwise, if it is an override of a parent, it will
-        // be added at class visitor level.
-        if ((methodAccess & Opcodes.ACC_ABSTRACT) == 0 && (methodAccess & Opcodes.ACC_NATIVE) == 0) {
-          logger.log(System.Logger.Level.DEBUG, "Found workflow method impl {0}.{1}", info.className, method);
-          if (info.workflowMethodImpls == null) {
-            info.workflowMethodImpls = new HashMap<>(1);
-          }
-          info.workflowMethodImpls.put(method, new ClassInfo.WorkflowMethodImpl(info.className, decl));
-        }
+        logger.log(System.Logger.Level.DEBUG, "Found workflow method decl on {0}.{1}", classInfo.name, methodName);
+        methodInfo.workflowDecl = new ClassInfo.MethodWorkflowDeclInfo(declKind);
       }
       return null;
     }
@@ -214,19 +136,6 @@ class ClassInfoVisitor extends ClassVisitor {
 
     @Override
     public void visitEnd() {
-      // If this method was marked invalid, go over every post process and set
-      // as such
-      if (info.invalidMethods != null && info.invalidMethods.containsKey(method)) {
-        var postProcessChecks = loading.postProcessChecks.remove(method);
-        if (postProcessChecks != null) {
-          for (var postProcessCheck : postProcessChecks) {
-            markInvalid(postProcessCheck.callingMethod,
-                    new ClassInfo.InvalidCall(info.className, info, method, postProcessCheck.callingLineNumber));
-          }
-        }
-      }
-      // Mark the method as visited
-      loading.methodsVisited.add(method);
       // Pop any remaining suppressions
       if (suppressionStack != null && methodSuppressions > 0) {
         for (var i = 0; i < methodSuppressions; i++) {
@@ -239,52 +148,36 @@ class ClassInfoVisitor extends ClassVisitor {
                   System.Logger.Level.WARNING,
                   "{0} warning suppression(s) not restored in {1}.{2}",
                   methodSuppressions - expectedMethodSuppressions,
-                  info.className,
-                  method);
+                  classInfo.name,
+                  methodName);
         }
       }
     }
 
     @Override
     public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
+      // If this method is already configured invalid one way or another, don't
+      // be concerned with invalid calls
+      if (methodInfo.configuredInvalid != null) {
+        return;
+      }
+
+      // Check if the call is being suppressed
       if (maybeSuppressMethodInsn(owner, name, descriptor)) {
         return;
       }
 
-      // Check if configured invalid or valid
-      var callMethod = name + descriptor;
-      var configuredInvalid = classInfoLoader.config.invalidMethods.check(owner, name, descriptor);
-      if (configuredInvalid != null) {
-        if (configuredInvalid) {
-          markInvalid(method, new ClassInfo.InvalidCall(owner, null, callMethod, methodLineNumber));
-        }
-        return;
+      // We tried many ways to do stream processing of invalid calls while they
+      // are loaded. While the recursion issue is trivially solved, properly
+      // resolving implemented interfaces (using proper specificity checks to
+      // disambiguate default impls) and similar challenges made it clear that
+      // it is worth the extra memory to capture _all_ calls up front and
+      // post-process whether they're invalid. This makes all method signatures
+      // available for resolution at invalid-check time.
+      if (methodInfo.calls == null) {
+        methodInfo.calls = new ArrayList<>();
       }
-
-      // Load the class info and if null (excluded), go no further
-      var callClassInfo = classInfoLoader.load(owner);
-      if (callClassInfo == null) {
-        return;
-      }
-
-      // If the info has this as an invalid method, mark as such
-      if (callClassInfo.invalidMethods != null && callClassInfo.invalidMethods.containsKey(callMethod)) {
-        markInvalid(method, new ClassInfo.InvalidCall(owner, callClassInfo, callMethod, methodLineNumber));
-        return;
-      }
-
-      // If the method already visited, there is no more to check
-      var callClassLoading = classInfoLoader.loading.get(owner);
-      if (callClassLoading == null || callClassLoading.methodsVisited.contains(callMethod)) {
-        return;
-      }
-
-      // The class can still be loading and not have reached this method yet,
-      // so we will install a post-process check. This is a good way to solve
-      // recursion while still streaming the loading.
-      var postProcessChecks = callClassLoading.postProcessChecks.computeIfAbsent(
-              callMethod, k -> new ArrayList<>(1));
-      postProcessChecks.add(new ClassInfoLoading.PostProcessCheck(info, method, methodLineNumber));
+      methodInfo.calls.add(new ClassInfo.MethodInvalidCallInfo(owner, name, descriptor, methodLineNumber));
     }
 
     // True if method call should not be checked for invalidity
@@ -301,8 +194,8 @@ class ClassInfoVisitor extends ClassVisitor {
                 logger.log(
                         System.Logger.Level.WARNING,
                         "WorkflowCheck.suppressWarnings call not using string literal at {0}.{1} ({2})",
-                        info.className,
-                        method,
+                        classInfo.name,
+                        methodName,
                         fileLoc());
                 return true;
               }
@@ -321,8 +214,8 @@ class ClassInfoVisitor extends ClassVisitor {
               suppressionStack.pop();
             } else {
               logger.log(System.Logger.Level.WARNING, "Restore with no previous suppression at {0}.{1} ({2})",
-                      info.className,
-                      method,
+                      classInfo.name,
+                      methodName,
                       fileLoc());
             }
             return true;
@@ -337,13 +230,13 @@ class ClassInfoVisitor extends ClassVisitor {
     }
 
     private String fileLoc() {
-      if (info.fileName == null) {
+      if (classInfo.fileName == null) {
         if (methodLineNumber == null) {
           return "<unknown file:line>";
         }
         return "<unknown file>:" + methodLineNumber;
       }
-      return info.fileName + ":" + (methodLineNumber == null ? "<unknown line>" : methodLineNumber);
+      return classInfo.fileName + ":" + (methodLineNumber == null ? "<unknown line>" : methodLineNumber);
     }
 
     @Override
@@ -399,10 +292,5 @@ class ClassInfoVisitor extends ClassVisitor {
     public void visitMultiANewArrayInsn(String descriptor, int numDimensions) {
       prevInsnLdcString = null;
     }
-  }
-
-  record ExternalWorkflowMethodDecl(
-          String declClass,
-          ClassInfo.WorkflowMethodDecl decl) {
   }
 }

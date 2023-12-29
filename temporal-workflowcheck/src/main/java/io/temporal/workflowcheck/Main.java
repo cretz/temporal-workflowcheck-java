@@ -2,10 +2,7 @@ package io.temporal.workflowcheck;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 
 public class Main {
   public static void main(String[] args) throws IOException {
@@ -39,7 +36,7 @@ public class Main {
             Analyze Temporal workflows for common mistakes.
             
             Usage:
-              workflowcheck check <classpath...> [--config <config-file>] [--no-default-config]
+              workflowcheck check <classpath...> [--config <config-file>] [--no-default-config] [--show-valid]
             """);
       return 0;
     }
@@ -67,31 +64,49 @@ public class Main {
       configProps.add(props);
     }
 
-    // Ensure that only a single arg remains for the classpath
+    // Whether we should also show valid
+    var showValid = argsList.remove("--show-valid");
+
+    // Ensure that we have at least one classpath arg
     if (argsList.isEmpty()) {
-      System.err.println("At least one classpath argument");
+      System.err.println("At least one classpath argument required");
       return 1;
     }
+    // While it can rarely be possible for the first file in a class path string
+    // to start with a dash, we're going to assume it's an invalid argument and
+    // users can qualify if needed.
+    var invalidArg = argsList.stream().filter(s -> s.startsWith("-")).findFirst();
+    if (invalidArg.isPresent()) {
+      System.err.println("Unrecognized argument: " + invalidArg);
+    }
 
-    System.err.println("Analyzing classpath for invalid workflow methods...");
+    System.err.println("Analyzing classpath for classes with workflow methods...");
     var config = Config.fromProperties(configProps.toArray(new Properties[0]));
-    var infos = new WorkflowCheck(config).findInvalidWorkflowImpls(argsList.toArray(new String[0]));
-    System.out.println("Found " + infos.size() + " workflow class(es) with invalid methods");
+    var infos = new WorkflowCheck(config).findWorkflowClasses(argsList.toArray(new String[0]));
+    System.out.println("Found " + infos.size() + " class(es) with workflow methods");
     if (infos.isEmpty()) {
       return 0;
     }
 
-    // Print the offenders
-    // TODO(cretz): Should we also print valid workflows/methods?
+    // Print workflow methods impls
+    var anyInvalidImpls = false;
     for (var info : infos) {
-      info.workflowMethodImpls.
-              keySet().
-              stream().
-              filter(info.invalidMethods::containsKey).
-              sorted().
-              forEach(method -> System.out.println(Printer.invalidWorkflowMethodText(info, method)));
+      for (var methods : info.methods.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
+        for (var method : methods.getValue()) {
+          // Only impls
+          if (method.workflowImpl == null) {
+            continue;
+          }
+          if (showValid || method.isInvalid()) {
+            System.out.println(Printer.methodText(info, methods.getKey(), method));
+          }
+          if (method.isInvalid()) {
+            anyInvalidImpls = true;
+          }
+        }
+      }
     }
-    return 1;
+    return anyInvalidImpls ? 1 : 0;
   }
 
   private static int prebuildConfig(String[] args) {

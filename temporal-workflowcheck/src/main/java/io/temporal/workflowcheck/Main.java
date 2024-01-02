@@ -4,6 +4,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.*;
 
+/** Entrypoint for CLI. */
 public class Main {
   public static void main(String[] args) throws IOException {
     if (args.length == 0 || "--help".equals(args[0])) {

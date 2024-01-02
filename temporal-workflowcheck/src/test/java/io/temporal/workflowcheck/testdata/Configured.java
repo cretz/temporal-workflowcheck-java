@@ -11,65 +11,65 @@ public interface Configured {
   class ConfiguredImpl implements Configured {
     @Override
     public void configured() {
-      // INVALID_CALL: Configured invalid
+      // INVALID: Configured invalid
       //   * class: io/temporal/workflowcheck/testdata/Configured$ConfiguredImpl
       //   * method: configured()V
-      //   * callClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
-      //   * callMethod: configuredInvalidFull()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
+      //   * accessedMember: configuredInvalidFull()V
       new SomeCalls().configuredInvalidFull();
 
-      // INVALID_CALL: Configured invalid
+      // INVALID: Configured invalid
       //   * class: io/temporal/workflowcheck/testdata/Configured$ConfiguredImpl
       //   * method: configured()V
-      //   * callClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
-      //   * callMethod: configuredInvalidALlButDescriptor()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
+      //   * accessedMember: configuredInvalidALlButDescriptor()V
       new SomeCalls().configuredInvalidALlButDescriptor();
 
-      // INVALID_CALL: Configured invalid
+      // INVALID: Configured invalid
       //   * class: io/temporal/workflowcheck/testdata/Configured$ConfiguredImpl
       //   * method: configured()V
-      //   * callClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
-      //   * callMethod: configuredInvalidClassAndMethod()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
+      //   * accessedMember: configuredInvalidClassAndMethod()V
       new SomeCalls().configuredInvalidClassAndMethod();
 
-      // INVALID_CALL: Configured invalid
+      // INVALID: Configured invalid
       //   * class: io/temporal/workflowcheck/testdata/Configured$ConfiguredImpl
       //   * method: configured()V
-      //   * callClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
-      //   * callMethod: configuredInvalidJustName()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
+      //   * accessedMember: configuredInvalidJustName()V
       new SomeCalls().configuredInvalidJustName();
 
-      // INVALID_CALL: Calls configured invalid
+      // INVALID: Calls configured invalid
       //   * class: io/temporal/workflowcheck/testdata/Configured$ConfiguredImpl
       //   * method: configured()V
-      //   * callClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
-      //   * callMethod: callsConfiguredInvalid()V
-      //   * callCauseClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
-      //   * callCauseMethod: configuredInvalidJustName()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
+      //   * accessedMember: callsConfiguredInvalid()V
+      //   * accessedCauseClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
+      //   * accessedCauseMethod: configuredInvalidJustName()V
       new SomeCalls().callsConfiguredInvalid();
 
       // This overload is ok
       new SomeCalls().configuredInvalidOverload("");
 
-      // INVALID_CALL: Configured invalid
+      // INVALID: Configured invalid
       //   * class: io/temporal/workflowcheck/testdata/Configured$ConfiguredImpl
       //   * method: configured()V
-      //   * callClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
-      //   * callMethod: configuredInvalidOverload(I)V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/Configured$SomeCalls
+      //   * accessedMember: configuredInvalidOverload(I)V
       new SomeCalls().configuredInvalidOverload(0);
 
-      // INVALID_CALL: Configured invalid
+      // INVALID: Configured invalid
       //   * class: io/temporal/workflowcheck/testdata/Configured$ConfiguredImpl
       //   * method: configured()V
-      //   * callClass: io/temporal/workflowcheck/testdata/Configured$SomeInterface$SomeInterfaceImpl
-      //   * callMethod: configuredInvalidIface()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/Configured$SomeInterface$SomeInterfaceImpl
+      //   * accessedMember: configuredInvalidIface()V
       new SomeInterface.SomeInterfaceImpl().configuredInvalidIface();
 
-      // INVALID_CALL: Configured invalid
+      // INVALID: Configured invalid
       //   * class: io/temporal/workflowcheck/testdata/Configured$ConfiguredImpl
       //   * method: configured()V
-      //   * callClass: io/temporal/workflowcheck/testdata/Configured$ConfiguredInvalidClass
-      //   * callMethod: someMethod()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/Configured$ConfiguredInvalidClass
+      //   * accessedMember: someMethod()V
       ConfiguredInvalidClass.someMethod();
     }
   }

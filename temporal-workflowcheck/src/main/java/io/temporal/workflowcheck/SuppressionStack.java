@@ -4,8 +4,9 @@ import javax.annotation.Nullable;
 import java.util.Deque;
 import java.util.LinkedList;
 
+/** Utility to push/pop configured suppressions. */
 class SuppressionStack {
-  // If it's null, that means suppress all
+  // If a value is null, that means suppress all
   private final Deque<DescriptorMatcher> stack = new LinkedList<>();
 
   // If null or empty string array given, all things suppressed

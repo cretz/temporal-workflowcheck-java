@@ -4,8 +4,14 @@ import org.objectweb.asm.*;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
+/**
+ * Visitor that visits the bytecode of a class. This is intentionally meant to
+ * be fast and have no recursion or other reliance on the visiting of other
+ * classes. Successive phases tie class information together.
+ */
 class ClassInfoVisitor extends ClassVisitor {
   private static final System.Logger logger = System.getLogger(ClassInfoVisitor.class.getName());
 
@@ -39,12 +45,26 @@ class ClassInfoVisitor extends ClassVisitor {
   }
 
   @Override
+  public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+    // Record all static non-final fields
+    if ((access & Opcodes.ACC_FINAL) == 0 && (access & Opcodes.ACC_STATIC) != 0) {
+      if (classInfo.nonFinalStaticFields == null) {
+        classInfo.nonFinalStaticFields = new HashSet<>();
+      }
+      classInfo.nonFinalStaticFields.add(name);
+    }
+
+    // TODO(cretz): Support suppression attributes on static non-final fields
+    return null;
+  }
+
+  @Override
   public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
     // Add method to class
     var methodInfo = new ClassInfo.MethodInfo(
             access,
             descriptor,
-            config.invalidMethods.check(classInfo.name, name, descriptor));
+            config.invalidMembers.check(classInfo.name, name, descriptor));
     classInfo.methods.computeIfAbsent(name, k -> new ArrayList<>()).add(methodInfo);
 
     // Reset and reuse the handler
@@ -163,7 +183,7 @@ class ClassInfoVisitor extends ClassVisitor {
       }
 
       // Check if the call is being suppressed
-      if (maybeSuppressMethodInsn(owner, name, descriptor)) {
+      if (maybeSuppressInsn(owner, name, descriptor)) {
         return;
       }
 
@@ -174,14 +194,56 @@ class ClassInfoVisitor extends ClassVisitor {
       // it is worth the extra memory to capture _all_ calls up front and
       // post-process whether they're invalid. This makes all method signatures
       // available for resolution at invalid-check time.
-      if (methodInfo.calls == null) {
-        methodInfo.calls = new ArrayList<>();
+      if (methodInfo.memberAccesses == null) {
+        methodInfo.memberAccesses = new ArrayList<>();
       }
-      methodInfo.calls.add(new ClassInfo.MethodInvalidCallInfo(owner, name, descriptor, methodLineNumber));
+      methodInfo.memberAccesses.add(new ClassInfo.MethodInvalidMemberAccessInfo(
+              owner, name, descriptor, methodLineNumber, ClassInfo.MethodInvalidMemberAccessInfo.Operation.METHOD_CALL));
     }
 
-    // True if method call should not be checked for invalidity
-    private boolean maybeSuppressMethodInsn(String owner, String name, String descriptor) {
+    @Override
+    public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+      // If this method is already configured invalid one way or another, don't
+      // be concerned with invalid fields
+      if (methodInfo.configuredInvalid != null) {
+        return;
+      }
+
+      // Check if the call is being suppressed
+      if (maybeSuppressInsn(owner, name, descriptor)) {
+        return;
+      }
+
+      // Check if the field is configured invalid
+      var invalid = config.invalidMembers.check(owner, name, null);
+      if (invalid != null) {
+        if (invalid) {
+          if (methodInfo.memberAccesses == null) {
+            methodInfo.memberAccesses = new ArrayList<>();
+          }
+          methodInfo.memberAccesses.add(new ClassInfo.MethodInvalidMemberAccessInfo(
+                  owner, name, descriptor, methodLineNumber,
+                  ClassInfo.MethodInvalidMemberAccessInfo.Operation.FIELD_CONFIGURED_INVALID));
+        }
+        return;
+      }
+
+      // Check if this is getting/putting a static field. We don't check
+      // whether the field is final or not until post-processing.
+      if (opcode == Opcodes.GETSTATIC || opcode == Opcodes.PUTSTATIC) {
+          if (methodInfo.memberAccesses == null) {
+            methodInfo.memberAccesses = new ArrayList<>();
+          }
+          methodInfo.memberAccesses.add(new ClassInfo.MethodInvalidMemberAccessInfo(
+                  owner, name, descriptor, methodLineNumber,
+                  opcode == Opcodes.GETSTATIC ?
+                          ClassInfo.MethodInvalidMemberAccessInfo.Operation.FIELD_STATIC_GET :
+                          ClassInfo.MethodInvalidMemberAccessInfo.Operation.FIELD_STATIC_PUT));
+      }
+    }
+
+    // True if instruction should not be checked for invalidity
+    private boolean maybeSuppressInsn(String owner, String name, String descriptor) {
       try {
         // Check if suppression call
         if ("io/temporal/workflowcheck/WorkflowCheck".equals(owner)) {
@@ -265,11 +327,6 @@ class ClassInfoVisitor extends ClassVisitor {
 
     @Override
     public void visitTypeInsn(int opcode, String type) {
-      prevInsnLdcString = null;
-    }
-
-    @Override
-    public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
       prevInsnLdcString = null;
     }
 

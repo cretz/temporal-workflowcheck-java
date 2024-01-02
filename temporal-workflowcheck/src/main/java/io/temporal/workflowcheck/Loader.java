@@ -7,6 +7,10 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.*;
 
+/**
+ * Loader that loads the classes, caches them, and does the work to determine
+ * invalidity across classes (and clean up the classes).
+ */
 class Loader {
   private final Config config;
   private final ClassPath classPath;
@@ -71,55 +75,73 @@ class Loader {
   }
 
   void processMethodValidity(ClassInfo.MethodInfo method, Set<ClassInfo.MethodInfo> processing) {
-    // If it has no calls (possibly actually has no calls or just has
-    // configured-invalid already set) or already processed, do nothing. This
-    // of course means that recursion does not apply for invalidity.
-    if (method.calls == null || processing.contains(method)) {
+    // If it has no member accesses (possibly actually has no calls/fields or
+    // just has configured-invalid already set) or already processed, do
+    // nothing. This of course means that recursion does not apply for
+    // invalidity.
+    if (method.memberAccesses == null || processing.contains(method)) {
       return;
     }
     // Go over every call and check whether invalid
     processing.add(method);
-    for (var call : method.calls) {
-      // We need to resolve the called method. A call is considered
-      // invalid/valid if:
-      // * Configured invalid set in the hierarchy (most-specific wins)
-      // * Actual impl of the method has invalid calls
-      var callClass = loadClass(call.className);
+    for (var memberAccess : method.memberAccesses) {
+      var invalid = false;
+      switch (memberAccess.operation) {
+        case FIELD_CONFIGURED_INVALID:
+          // This is always considered invalid
+          invalid = true;
+          break;
+        case FIELD_STATIC_GET:
+        case FIELD_STATIC_PUT:
+          // This is considered invalid if the class has the field as a
+          // non-final static
+          memberAccess.resolvedInvalidClass = loadClass(memberAccess.className);
+          invalid = memberAccess.resolvedInvalidClass.nonFinalStaticFields != null &&
+                  memberAccess.resolvedInvalidClass.nonFinalStaticFields.contains(memberAccess.memberName);
+          break;
+        case METHOD_CALL:
+          // A call is considered invalid/valid if:
+          // * Configured invalid set in the hierarchy (most-specific wins)
+          // * Actual impl of the method has invalid calls
+          var callClass = loadClass(memberAccess.className);
 
-      var configResolution = new ConfiguredInvalidResolution();
-      resolveConfiguredInvalid(callClass, call.methodName, call.methodDescriptor, 0, configResolution);
-      if (configResolution.value != null) {
-        if (configResolution.value) {
-          call.resolvedInvalidClass = configResolution.classFoundOn;
-          if (method.invalidCalls == null) {
-            method.invalidCalls = new ArrayList<>(1);
+          var configResolution = new ConfiguredInvalidResolution();
+          resolveConfiguredInvalid(callClass, memberAccess.memberName,
+                  memberAccess.memberDescriptor, 0, configResolution);
+          if (configResolution.value != null) {
+            if (configResolution.value) {
+              memberAccess.resolvedInvalidClass = configResolution.classFoundOn;
+              invalid = true;
+            }
+            break;
           }
-          method.invalidCalls.add(call);
-        }
-        continue;
+
+          var methodResolution = new MethodResolution();
+          resolveMethod(loadClass(memberAccess.className), memberAccess.className,
+                  memberAccess.memberName, memberAccess.memberDescriptor, methodResolution);
+          if (methodResolution.implClass != null) {
+            // Process invalidity on this method, then check if it's invalid
+            processMethodValidity(methodResolution.implMethod, processing);
+            if (methodResolution.implMethod.isInvalid()) {
+              memberAccess.resolvedInvalidClass = methodResolution.implClass;
+              memberAccess.resolvedInvalidMethod = methodResolution.implMethod;
+              invalid = true;
+            }
+          }
+          break;
       }
-
-      var methodResolution = new MethodResolution();
-      resolveMethod(loadClass(call.className),
-              call.className, call.methodName, call.methodDescriptor, methodResolution);
-      if (methodResolution.implClass != null) {
-        // Process invalidity on this method, then check if it's invalid
-        processMethodValidity(methodResolution.implMethod, processing);
-        if (methodResolution.implMethod.isInvalid()) {
-          call.resolvedInvalidClass = methodResolution.implClass;
-          call.resolvedInvalidMethod = methodResolution.implMethod;
-          if (method.invalidCalls == null) {
-            method.invalidCalls = new ArrayList<>(1);
-          }
-          method.invalidCalls.add(call);
+      if (invalid) {
+        if (method.invalidMemberAccesses == null) {
+          method.invalidMemberAccesses = new ArrayList<>(1);
         }
+        method.invalidMemberAccesses.add(memberAccess);
       }
     }
-    // Unset the calls now that we've processed them
-    method.calls = null;
-    // Sort invalid calls if there are any
-    if (method.invalidCalls != null) {
-      method.invalidCalls.sort(Comparator.comparingInt(m -> m.line == null ? -1 : m.line));
+    // Unset the member accesses now that we've processed them
+    method.memberAccesses = null;
+    // Sort invalid accesses if there are any
+    if (method.invalidMemberAccesses != null) {
+      method.invalidMemberAccesses.sort(Comparator.comparingInt(m -> m.line == null ? -1 : m.line));
     }
     processing.remove(method);
   }
@@ -137,7 +159,7 @@ class Loader {
           int depth,
           ConfiguredInvalidResolution resolution) {
     // First check myself
-    var configuredInvalid = config.invalidMethods.check(on.name, methodName, methodDescriptor);
+    var configuredInvalid = config.invalidMembers.check(on.name, methodName, methodDescriptor);
     if (configuredInvalid != null && isMoreSpecific(resolution.classFoundOn, resolution.depthFoundOn, on, depth)) {
       resolution.classFoundOn = on;
       resolution.depthFoundOn = depth;

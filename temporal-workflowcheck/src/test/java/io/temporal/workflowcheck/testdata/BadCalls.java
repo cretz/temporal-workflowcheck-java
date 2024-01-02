@@ -28,74 +28,101 @@ public interface BadCalls {
   void doUpdateValidate();
 
   class BadCallsImpl implements BadCalls {
+    private static final String FIELD_FINAL = "foo";
+    private static String FIELD_NON_FINAL = "bar";
+
     @Override
     public void doWorkflow() {
-      // INVALID_CALL: Direct invalid call in workflow
+      // INVALID: Direct invalid call in workflow
       //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
       //   * method: doWorkflow()V
-      //   * callClass: java/time/Instant
-      //   * callMethod: now()Ljava/time/Instant;
+      //   * accessedClass: java/time/Instant
+      //   * accessedMember: now()Ljava/time/Instant;
       Instant.now();
 
-      // INVALID_CALL: Indirect invalid call via local method
+      // INVALID: Indirect invalid call via local method
       //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
       //   * method: doWorkflow()V
-      //   * callClass: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
-      //   * callMethod: currentInstant()V
-      //   * callCauseClass: java/util/Date
-      //   * callCauseMethod: <init>()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
+      //   * accessedMember: currentInstant()V
+      //   * accessedCauseClass: java/util/Date
+      //   * accessedCauseMethod: <init>()V
       currentInstant();
 
-      // INVALID_CALL: Indirect invalid call via stdlib method
+      // INVALID: Indirect invalid call via stdlib method
       //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
       //   * method: doWorkflow()V
-      //   * callClass: java/util/Collections
-      //   * callMethod: shuffle(Ljava/util/List;)V
-      //   * callCauseClass: java/util/Random
-      //   * callCauseMethod: <init>()V
+      //   * accessedClass: java/util/Collections
+      //   * accessedMember: shuffle(Ljava/util/List;)V
+      //   * accessedCauseClass: java/util/Random
+      //   * accessedCauseMethod: <init>()V
       Collections.shuffle(new ArrayList<>());
 
       // But this is an acceptable call because we are passing in a seeded random
       Collections.shuffle(new ArrayList<>(), new Random(123));
+
+      // INVALID: Configured invalid field
+      //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
+      //   * method: doWorkflow()V
+      //   * accessedClass: java/lang/System
+      //   * accessedMember: out
+      System.out.println("foo");
+
+      // INVALID: Setting static non-final field
+      //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
+      //   * method: doWorkflow()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
+      //   * accessedMember: FIELD_NON_FINAL
+      FIELD_NON_FINAL = "blah";
+
+      // INVALID: Getting static non-final field
+      //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
+      //   * method: doWorkflow()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
+      //   * accessedMember: FIELD_NON_FINAL
+      new StringBuilder(FIELD_NON_FINAL);
+
+      // It's ok to access a final static field though
+      new StringBuilder(FIELD_FINAL);
     }
 
     @Override
     public void doSignal() {
-      // INVALID_CALL: Direct invalid call in signal
+      // INVALID: Direct invalid call in signal
       //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
       //   * method: doSignal()V
-      //   * callClass: java/lang/System
-      //   * callMethod: nanoTime()J
+      //   * accessedClass: java/lang/System
+      //   * accessedMember: nanoTime()J
       System.nanoTime();
     }
 
     @Override
     public long doQuery() {
-      // INVALID_CALL: Direct invalid call in query
+      // INVALID: Direct invalid call in query
       //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
       //   * method: doQuery()J
-      //   * callClass: java/lang/System
-      //   * callMethod: currentTimeMillis()J
+      //   * accessedClass: java/lang/System
+      //   * accessedMember: currentTimeMillis()J
       return System.currentTimeMillis();
     }
 
     @Override
     public void doUpdate() {
-      // INVALID_CALL: Direct invalid call in update
+      // INVALID: Direct invalid call in update
       //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
       //   * method: doUpdate()V
-      //   * callClass: java/time/LocalDate
-      //   * callMethod: now()Ljava/time/LocalDate;
+      //   * accessedClass: java/time/LocalDate
+      //   * accessedMember: now()Ljava/time/LocalDate;
       LocalDate.now();
     }
 
     @Override
     public void doUpdateValidate() {
-      // INVALID_CALL: Direct invalid call in update validator
+      // INVALID: Direct invalid call in update validator
       //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
       //   * method: doUpdateValidate()V
-      //   * callClass: java/time/LocalDateTime
-      //   * callMethod: now()Ljava/time/LocalDateTime;
+      //   * accessedClass: java/time/LocalDateTime
+      //   * accessedMember: now()Ljava/time/LocalDateTime;
       LocalDateTime.now();
     }
 

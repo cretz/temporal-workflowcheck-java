@@ -46,3 +46,4 @@
 * Document how collection iteration is by default considered unsafe but that it can be set as safe
 * Support configuration via env vars and CLI params too
 * SARIF output
+* Document how inline suppressWarnings works on bytecode flow not logic flow

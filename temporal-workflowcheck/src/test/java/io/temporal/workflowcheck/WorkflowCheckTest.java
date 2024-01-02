@@ -39,31 +39,6 @@ public class WorkflowCheckTest {
     Logger.getLogger(ClassInfoVisitor.class.getName()).removeHandler(classInfoVisitorLogs);
   }
 
-  /*
-  TODO(cretz): Tests:
-  * Positive if direct a workflow method, signal, or update
-  * Negative if direct not a workflow method
-  * Negative if direct in an uncalled method on the workflow class
-  * Positive if indirect via same-class call
-  * Positive if indirect via another-class-same-compilation-unit call
-  * Positive if indirect via external JAR
-  * Positive if indirect via two external JARs
-  * Negative if direct not included due to config
-  * Negative if indirect not included due to config
-  * Negative if suppressed at class, method, etc level
-  * Recursive on self (both positive and negative)
-  * Recursive pair of functions calling each other in workflow code (both with failures and not)
-  * Recursive pair of functions calling each other from different classes (both with failures and not)
-  * Positive on default impl of workflow method in interface
-  * Positive on parent impl of workflow method on abstract class later overridden
-  * Covariant return on workflow method (should probably fail)
-  * Covariant generic return on workflow method (should probably fail)
-  * As lambda/invokedynamic method reference (e.g. Instant::now)
-  * Nested classes
-  * Test exclusions at all levels (specific descriptor, method, class, and package)
-  * Workflows inside module
-  */
-
   @Test
   public void testWorkflowCheck() throws IOException {
     // Load properties
@@ -85,16 +60,16 @@ public class WorkflowCheckTest {
     }
 
     // Collect actual/expected lists (we accept perf penalty of not being sets)
-    var actual = InvalidCallAssertion.fromClassInfos(infos);
+    var actual = InvalidMemberAccessAssertion.fromClassInfos(infos);
     var expected = SourceAssertions.fromTestSource();
 
     // Check differences in both directions
     var diff = new ArrayList<>(actual);
-    diff.removeAll(expected.invalidCalls);
+    diff.removeAll(expected.invalidAccesses);
     for (var v : diff) {
-      fail("Unexpected invalid call: " + v);
+      fail("Unexpected invalid access: " + v);
     }
-    diff = new ArrayList<>(expected.invalidCalls);
+    diff = new ArrayList<>(expected.invalidAccesses);
     diff.removeAll(actual);
     for (var v : diff) {
       fail("Missing expected invalid call: " + v);
@@ -111,7 +86,7 @@ public class WorkflowCheckTest {
   }
 
   record SourceAssertions(
-          List<InvalidCallAssertion> invalidCalls,
+          List<InvalidMemberAccessAssertion> invalidAccesses,
           List<LogAssertion> logs) {
 
     private static final String[] SOURCE_FILES = new String[]{
@@ -122,7 +97,7 @@ public class WorkflowCheckTest {
     };
 
     static SourceAssertions fromTestSource() {
-      var invalidCallAsserts = new ArrayList<InvalidCallAssertion>();
+      var invalidAccesses = new ArrayList<InvalidMemberAccessAssertion>();
       var logAsserts = new ArrayList<LogAssertion>();
       for (var resourcePath : SOURCE_FILES) {
         var fileParts = resourcePath.split("/");
@@ -138,48 +113,52 @@ public class WorkflowCheckTest {
         }
 
         // Add asserts
-        invalidCallAsserts.addAll(InvalidCallAssertion.fromJavaLines(fileName, lines));
+        invalidAccesses.addAll(InvalidMemberAccessAssertion.fromJavaLines(fileName, lines));
         logAsserts.addAll(LogAssertion.fromJavaLines(lines));
       }
-      return new SourceAssertions(invalidCallAsserts, logAsserts);
+      return new SourceAssertions(invalidAccesses, logAsserts);
     }
   }
 
-  record InvalidCallAssertion(
+  record InvalidMemberAccessAssertion(
           String fileName,
           int line,
           String className,
-          String method,
-          String callClass,
-          String callMethod,
+          String member,
+          String accessedClass,
+          String accessedMember,
           // Cause info can be null
           @Nullable
-          String callCauseClass,
+          String accessedCauseClass,
           @Nullable
-          String callCauseMethod
+          String accessedCauseMethod
   ) {
-    static List<InvalidCallAssertion> fromClassInfos(List<ClassInfo> infos) {
-      var assertions = new ArrayList<InvalidCallAssertion>();
+    static List<InvalidMemberAccessAssertion> fromClassInfos(List<ClassInfo> infos) {
+      var assertions = new ArrayList<InvalidMemberAccessAssertion>();
       for (var info : infos) {
         for (var methods : info.methods.entrySet()) {
           for (var method : methods.getValue()) {
-            // Only invalid workflow impls with calls
-            if (method.workflowImpl != null && method.invalidCalls != null) {
-              for (var call : method.invalidCalls) {
+            // Only invalid workflow impls with invalid accesses
+            if (method.workflowImpl != null && method.invalidMemberAccesses != null) {
+              for (var access : method.invalidMemberAccesses) {
                 // Find first cause
-                ClassInfo.MethodInvalidCallInfo causeCall = null;
-                if (call.resolvedInvalidMethod != null && call.resolvedInvalidMethod.invalidCalls != null) {
-                  causeCall = call.resolvedInvalidMethod.invalidCalls.get(0);
+                ClassInfo.MethodInvalidMemberAccessInfo causeAccess = null;
+                if (access.resolvedInvalidMethod != null &&
+                        access.resolvedInvalidMethod.invalidMemberAccesses != null) {
+                  causeAccess = access.resolvedInvalidMethod.invalidMemberAccesses.get(0);
                 }
-                assertions.add(new InvalidCallAssertion(
+                assertions.add(new InvalidMemberAccessAssertion(
                         info.fileName,
-                        Objects.requireNonNull(call.line),
+                        Objects.requireNonNull(access.line),
                         info.name,
                         methods.getKey() + method.descriptor,
-                        call.className,
-                        call.methodName + call.methodDescriptor,
-                        causeCall == null ? null : causeCall.className,
-                        causeCall == null ? null : causeCall.methodName + causeCall.methodDescriptor));
+                        access.className,
+                        access.operation == ClassInfo.MethodInvalidMemberAccessInfo.Operation.METHOD_CALL ?
+                                access.memberName + access.memberDescriptor : access.memberName,
+                        causeAccess == null ? null : causeAccess.className,
+                        causeAccess == null ? null :
+                                causeAccess.operation == ClassInfo.MethodInvalidMemberAccessInfo.Operation.METHOD_CALL ?
+                                        causeAccess.memberName + causeAccess.memberDescriptor : causeAccess.memberName));
               }
             }
           }
@@ -188,12 +167,12 @@ public class WorkflowCheckTest {
       return assertions;
     }
 
-    static List<InvalidCallAssertion> fromJavaLines(String fileName, List<String> lines) {
-      var assertions = new ArrayList<InvalidCallAssertion>();
+    static List<InvalidMemberAccessAssertion> fromJavaLines(String fileName, List<String> lines) {
+      var assertions = new ArrayList<InvalidMemberAccessAssertion>();
       for (var lineIdx = 0; lineIdx < lines.size(); lineIdx++) {
         var line = lines.get(lineIdx).trim();
-        // Confirm INVALID_CALL
-        if (!line.startsWith("// INVALID_CALL")) {
+        // Confirm INVALID
+        if (!line.startsWith("// INVALID")) {
           continue;
         }
         // Collect indented bullets
@@ -205,15 +184,15 @@ public class WorkflowCheckTest {
           assertTrue(colonIndex > 0);
           bullets.put(line.substring(0, colonIndex), line.substring(colonIndex + 2));
         }
-        assertions.add(new InvalidCallAssertion(
+        assertions.add(new InvalidMemberAccessAssertion(
                 fileName,
                 lineIdx + 2,
                 Objects.requireNonNull(bullets.get("class")),
                 Objects.requireNonNull(bullets.get("method")),
-                Objects.requireNonNull(bullets.get("callClass")),
-                Objects.requireNonNull(bullets.get("callMethod")),
-                bullets.get("callCauseClass"),
-                bullets.get("callCauseMethod")));
+                Objects.requireNonNull(bullets.get("accessedClass")),
+                Objects.requireNonNull(bullets.get("accessedMember")),
+                bullets.get("accessedCauseClass"),
+                bullets.get("accessedCauseMethod")));
       }
       return assertions;
     }

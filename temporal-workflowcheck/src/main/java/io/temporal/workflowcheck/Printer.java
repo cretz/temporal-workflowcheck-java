@@ -2,10 +2,12 @@ package io.temporal.workflowcheck;
 
 import org.objectweb.asm.Type;
 
+import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
 
+/** Helpers for printing results. */
 class Printer {
   static String methodText(ClassInfo classInfo, String methodName, ClassInfo.MethodInfo methodInfo) {
     var printer = new Printer();
@@ -25,13 +27,13 @@ class Printer {
     bld.append(indent);
     if (methodInfo.workflowImpl != null) {
       bld.append("Workflow method ");
-      appendFriendlyMethod(classInfo.name, methodName, methodInfo.descriptor);
+      appendFriendlyMember(classInfo.name, methodName, methodInfo.descriptor);
       bld.append(" (declared on ");
       appendFriendlyClassName(methodInfo.workflowImpl.declClassInfo.name);
       bld.append(")");
     } else {
       bld.append("Method ");
-      appendFriendlyMethod(classInfo.name, methodName, methodInfo.descriptor);
+      appendFriendlyMember(classInfo.name, methodName, methodInfo.descriptor);
     }
     if (!methodInfo.isInvalid()) {
       bld.append(" is valid\n");
@@ -39,14 +41,14 @@ class Printer {
       bld.append(" is configured as invalid\n");
     } else if (seenMethods.size() > 30) {
       bld.append(" is invalid (stack depth exceeded, stopping here)\n");
-    } else if (methodInfo.invalidCalls != null) {
-      bld.append(" has ").append(methodInfo.invalidCalls.size()).append(" invalid call");
-      if (methodInfo.invalidCalls.size() > 1) {
-        bld.append('s');
+    } else if (methodInfo.invalidMemberAccesses != null) {
+      bld.append(" has ").append(methodInfo.invalidMemberAccesses.size()).append(" invalid member access");
+      if (methodInfo.invalidMemberAccesses.size() > 1) {
+        bld.append("es");
       }
       bld.append(":\n");
-      for (var call : methodInfo.invalidCalls) {
-        appendInvalidCall(classInfo, call, indent + "  ", seenMethods);
+      for (var memberAccess : methodInfo.invalidMemberAccesses) {
+        appendInvalidMemberAccess(classInfo, memberAccess, indent + "  ", seenMethods);
       }
     } else {
       // Should not happen
@@ -55,9 +57,9 @@ class Printer {
     seenMethods.remove(methodInfo);
   }
 
-  private void appendInvalidCall(
+  private void appendInvalidMemberAccess(
           ClassInfo callerClassInfo,
-          ClassInfo.MethodInvalidCallInfo callInfo,
+          ClassInfo.MethodInvalidMemberAccessInfo accessInfo,
           String indent,
           Set<ClassInfo.MethodInfo> seenMethods) {
     bld.append(indent);
@@ -65,28 +67,47 @@ class Printer {
       bld.append("<unknown-file>");
     } else {
       bld.append(callerClassInfo.fileName);
-      if (callInfo.line != null) {
-        bld.append(':').append(callInfo.line);
+      if (accessInfo.line != null) {
+        bld.append(':').append(accessInfo.line);
       }
     }
-    bld.append(" invokes ");
-    appendFriendlyMethod(callInfo.className, callInfo.methodName, callInfo.methodDescriptor);
-    if (callInfo.resolvedInvalidClass == null) {
-      // Should never happen
-      bld.append(" (resolution failed)\n");
-    } else if (callInfo.resolvedInvalidMethod == null) {
-      bld.append(" which is configured as invalid\n");
-    } else if (seenMethods.contains(callInfo.resolvedInvalidMethod)) {
-      // Should not happen
-      bld.append(" (unexpected recursion)\n");
-    } else {
-      bld.append(":\n");
-      appendMethod(
-              callInfo.resolvedInvalidClass,
-              callInfo.methodName,
-              callInfo.resolvedInvalidMethod,
-              indent + "  ",
-              seenMethods);
+    switch (accessInfo.operation) {
+      case FIELD_CONFIGURED_INVALID:
+        bld.append(" references ");
+        appendFriendlyMember(accessInfo.className, accessInfo.memberName, null);
+        bld.append(" which is configured as invalid\n");
+        break;
+      case FIELD_STATIC_GET:
+        bld.append(" gets ");
+        appendFriendlyMember(accessInfo.className, accessInfo.memberName, null);
+        bld.append(" which is a non-final static field\n");
+        break;
+      case FIELD_STATIC_PUT:
+        bld.append(" sets ");
+        appendFriendlyMember(accessInfo.className, accessInfo.memberName, null);
+        bld.append(" which is a non-final static field\n");
+        break;
+      case METHOD_CALL:
+        bld.append(" invokes ");
+        appendFriendlyMember(accessInfo.className, accessInfo.memberName, accessInfo.memberDescriptor);
+        if (accessInfo.resolvedInvalidClass == null) {
+          // Should never happen
+          bld.append(" (resolution failed)\n");
+        } else if (accessInfo.resolvedInvalidMethod == null) {
+          bld.append(" which is configured as invalid\n");
+        } else if (seenMethods.contains(accessInfo.resolvedInvalidMethod)) {
+          // Should not happen
+          bld.append(" (unexpected recursion)\n");
+        } else {
+          bld.append(":\n");
+          appendMethod(
+                  accessInfo.resolvedInvalidClass,
+                  accessInfo.memberName,
+                  accessInfo.resolvedInvalidMethod,
+                  indent + "  ",
+                  seenMethods);
+        }
+        break;
     }
   }
 
@@ -94,16 +115,19 @@ class Printer {
     bld.append(className.replace('/', '.'));
   }
 
-  private void appendFriendlyMethod(String className, String methodName, String methodDescriptor) {
+  private void appendFriendlyMember(String className, String memberName, @Nullable String methodDescriptor) {
     appendFriendlyClassName(className);
-    bld.append('.').append(methodName).append('(');
-    var argTypes = Type.getArgumentTypes(methodDescriptor);
-    for (var i = 0; i < argTypes.length; i++) {
-      if (i > 0) {
-        bld.append(", ");
+    bld.append('.').append(memberName);
+    if (methodDescriptor != null) {
+      bld.append('(');
+      var argTypes = Type.getArgumentTypes(methodDescriptor);
+      for (var i = 0; i < argTypes.length; i++) {
+        if (i > 0) {
+          bld.append(", ");
+        }
+        bld.append(argTypes[i].getClassName());
       }
-      bld.append(argTypes[i].getClassName());
+      bld.append(')');
     }
-    bld.append(')');
   }
 }

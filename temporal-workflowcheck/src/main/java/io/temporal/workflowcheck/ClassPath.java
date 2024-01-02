@@ -10,8 +10,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarFile;
 
+/**
+ * Classpath helpers for a class loader to get all classes.
+ */
 class ClassPath implements AutoCloseable {
-
   static boolean isStandardLibraryClass(String name) {
     return name.startsWith("java/") ||
             name.startsWith("javax/") ||

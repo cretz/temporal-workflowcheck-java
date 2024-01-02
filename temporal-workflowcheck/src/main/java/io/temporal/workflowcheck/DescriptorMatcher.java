@@ -6,14 +6,11 @@ import java.util.Map;
 import java.util.Properties;
 
 /**
- * Pattern is <code>[[qualified/class/]Name.]methodName[(Lthe/Desc;)V]</code>.
+ * Matcher for a set of descriptors. Pattern is
+ * <code>[[qualified/class/]Name.]memberName[(Lthe/Method/Desc;)V]</code>.
  */
 class DescriptorMatcher {
   private final Map<String, Boolean> descriptors;
-
-  DescriptorMatcher() {
-    this(new HashMap<>());
-  }
 
   DescriptorMatcher(Map<String, Boolean> descriptors) {
     this.descriptors = descriptors;
@@ -36,7 +33,7 @@ class DescriptorMatcher {
   void addFromProperties(String category, Properties props) {
     var prefix = "temporal.workflowcheck." + category + ".";
     for (var entry : props.entrySet()) {
-      // Key is temporal.workflowcheck.<category>.<desc-sans-return>=<true|false>
+      // Key is temporal.workflowcheck.<category>.<pattern>=<true|false>
       var key = (String) entry.getKey();
       if (!key.startsWith(prefix)) {
         continue;
@@ -60,52 +57,52 @@ class DescriptorMatcher {
   }
 
   @Nullable
-  Boolean check(String className, @Nullable String methodName, @Nullable String methodDescriptor) {
+  Boolean check(String className, @Nullable String memberName, @Nullable String methodDescriptor) {
     // Check full descriptor sans return, then full sans params, then just
-    // method, then just method sans params, then FQCN, and then each parent
+    // member, then just member sans params, then FQCN, and then each parent
     // package. We remove return values from the method descriptor since the
     // map only allows arguments.
     if (methodDescriptor != null) {
       methodDescriptor = methodDescriptor.substring(0, methodDescriptor.indexOf(')') + 1);
     }
 
-    // Method name + descriptor doesn't have to be present to check class
-    if (methodName != null) {
+    // Member name + descriptor doesn't have to be present to check class
+    if (memberName != null) {
       // Try qualified class with method
-      var classAndMethod = className + "." + methodName;
+      var classAndMember = className + "." + memberName;
       if (methodDescriptor != null) {
-        var invalid = descriptors.get(classAndMethod + methodDescriptor);
+        var invalid = descriptors.get(classAndMember + methodDescriptor);
         if (invalid != null) {
           return invalid;
         }
       }
-      var invalid = descriptors.get(classAndMethod);
+      var invalid = descriptors.get(classAndMember);
       if (invalid != null) {
         return invalid;
       }
-      // Try unqualified class with method
+      // Try unqualified class with member
       var slashIndex = className.lastIndexOf('/');
       if (slashIndex > 0) {
-        classAndMethod = classAndMethod.substring(slashIndex + 1);
+        classAndMember = classAndMember.substring(slashIndex + 1);
         if (methodDescriptor != null) {
-          invalid = descriptors.get(classAndMethod + methodDescriptor);
+          invalid = descriptors.get(classAndMember + methodDescriptor);
           if (invalid != null) {
             return invalid;
           }
         }
-        invalid = descriptors.get(classAndMethod);
+        invalid = descriptors.get(classAndMember);
         if (invalid != null) {
           return invalid;
         }
       }
-      // Just method
+      // Just member
       if (methodDescriptor != null) {
-        invalid = descriptors.get(methodName + methodDescriptor);
+        invalid = descriptors.get(memberName + methodDescriptor);
         if (invalid != null) {
           return invalid;
         }
       }
-      invalid = descriptors.get(methodName);
+      invalid = descriptors.get(memberName);
       if (invalid != null) {
         return invalid;
       }

@@ -84,6 +84,13 @@ public interface BadCalls {
 
       // It's ok to access a final static field though
       new StringBuilder(FIELD_FINAL);
+
+      // We want reflection to be considered safe
+      try {
+        getClass().getField("FIELD_NON_FINAL").get(null);
+      } catch (IllegalAccessException|NoSuchFieldException e) {
+        throw new RuntimeException(e);
+      }
     }
 
     @Override

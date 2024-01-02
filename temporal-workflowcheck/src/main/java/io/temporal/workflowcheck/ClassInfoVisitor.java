@@ -209,12 +209,12 @@ class ClassInfoVisitor extends ClassVisitor {
         return;
       }
 
-      // Check if the call is being suppressed
+      // Check if the field is being suppressed
       if (maybeSuppressInsn(owner, name, descriptor)) {
         return;
       }
 
-      // Check if the field is configured invalid
+      // Check if the field is configured invalid one way or another
       var invalid = config.invalidMembers.check(owner, name, null);
       if (invalid != null) {
         if (invalid) {

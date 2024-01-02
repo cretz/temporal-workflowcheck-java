@@ -12,7 +12,7 @@ public class Config {
    */
   public static Properties defaultProperties() throws IOException {
     var props = new Properties();
-    try (var is = Config.class.getResourceAsStream("config.properties")) {
+    try (var is = Config.class.getResourceAsStream("workflowcheck.properties")) {
       props.load(is);
     }
     return props;

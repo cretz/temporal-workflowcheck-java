@@ -1,5 +1,5 @@
 plugins {
-    id 'java'
+    id 'application'
     id 'maven-publish'
     id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
@@ -16,6 +16,10 @@ java {
         languageVersion = JavaLanguageVersion.of(17)
     }
     withSourcesJar()
+}
+
+application {
+    mainClass = 'io.temporal.workflowcheck.Main'
 }
 
 // Add test Java code as test resources

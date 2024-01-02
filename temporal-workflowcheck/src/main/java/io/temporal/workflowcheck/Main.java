@@ -16,7 +16,7 @@ public class Main {
             
             Commands:
               check - Check all workflow code on the classpath for invalid calls
-              prebuild-config - Pre-build a config for certain packages to keep from scanning each time
+              prebuild-config - Pre-build a config for certain packages to keep from scanning each time (TODO)
             """);
       return;
     }

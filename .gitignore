@@ -1,6 +1,10 @@
 /samples/gradle/.gradle
 /samples/gradle/.idea
 /samples/gradle/build
+/samples/gradle-multi-project/.gradle
+/samples/gradle-multi-project/.idea
+/samples/gradle-multi-project/project-app/build
+/samples/gradle-multi-project/project-workflows/build
 
 /samples/maven/.idea
 /samples/maven/target

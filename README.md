@@ -76,8 +76,8 @@ positives.
 
 ### Configuration
 
-workflowcheck configuration is done via `.properties` file(s) formatted configuration. The main use of configuration is
-to configure what the system considers an "invalid" method or field. Each property is in the format:
+workflowcheck configuration is done via `.properties` file(s). The main use of configuration is to configure what the
+system considers an "invalid" method or field. Each property is in the format:
 
 ```
 temporal.workflowcheck.invalid.[[some/package/]ClassName.]memberName[(Lmethod/Descriptor;)V]=true|false
@@ -85,8 +85,8 @@ temporal.workflowcheck.invalid.[[some/package/]ClassName.]memberName[(Lmethod/De
 
 The key names after `temporal.workflowcheck.invalid.` are known as "descriptor patterns" and these patterns are checked
 to see whether a call or field access is invalid. If the value is `true` the pattern is considered invalid and if it is
-`false` is is considered valid. When supplying properties files as configuration, the later-provided configuration keys
-overwrite the former keys. During checking, the more-specific patterns are checked first and the first, most-specific
+`false` it is considered valid. When supplying properties files as configuration, the later-provided configuration keys
+overwrite the earlier keys. During checking, the more-specific patterns are checked first and the first, most-specific
 one to say whether it is valid or invalid is what is used. This means that, given the following two properties:
 
 ```
@@ -130,7 +130,7 @@ not useful for our strict checking).
 Note, in order to support superclass/superinterface checking, if nothing is found for the type, the same method is
 checked against the superclass and superinterfaces. So technically `java/lang/Object.indexOf` would match even though
 that method does not exist. This is by intention to allow marking entire hierarchies of methods invalid (e.g.
-`Map.iterator=true` but `LinkedHashMap.iterator=false`).
+`Map.forEach=true` but `LinkedHashMap.forEach=false`).
 
 There is advanced logic with inheritance and how the proper implementation of a method is determined including resolving
 interface default methods, but that is beyond this documentation. Users are encouraged to write tests confirming
@@ -261,8 +261,8 @@ The invalidity processor is a recursive call that checks a method for whether it
   member accesses
 * Checks all method calls to see if they are invalid by:
   * Finding the most-specific configured descriptor pattern, using advanced most-specific logic when encountering
-    ambiguous interface depth. If it is configured invalid, mark as such, but if it is configured valid, do not go on to
-    the next step.
+    ambiguous interface depth. If it is configured invalid, mark as such. Regardless of whether invalid or valid, if it
+    was configured at all, do not go to the next step.
   * Resolve the most specific implementation of a method. Just because `Foo.bar()` is the method invocation doesn't mean
     `Foo` declares `bar()`, it may inherited. Advanced virtual resolution logic is used to find the first implementation
     in the hierarchy that it refers to. If/when resolved, that method is recursively checked for invalidity via this
@@ -312,7 +312,7 @@ mutable objects instead of records, etc may be present. But the user-facing API 
 
 ### TODO
 
-This project contains known missing features:
+Currently, this project is missing many features:
 
 * Accept environment variables to point to config files
 * Accept environment variables to provide specific config properties

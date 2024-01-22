@@ -11,6 +11,7 @@ application {
 
 dependencies {
     implementation project(':project-workflows')
+    implementation 'io.temporal:temporal-sdk:1.22.3'
 }
 
 // *** workflowcheck config ***

@@ -1,7 +1,8 @@
-package io.temporal.workflowcheck.sample.gradlemulti.workflows;
+package io.temporal.workflowcheck.sample.gradlemulti.app;
 
 import java.time.LocalTime;
 import io.temporal.failure.ApplicationFailure;
+import io.temporal.workflowcheck.sample.gradlemulti.workflows.MyWorkflow;
 
 public class MyWorkflowImpl implements MyWorkflow {
   @Override

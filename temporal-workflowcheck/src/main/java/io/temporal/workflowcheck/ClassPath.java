@@ -41,7 +41,7 @@ class ClassPath implements AutoCloseable {
             urls.add(file.toURI().toURL());
             findClassesInDir("", file, classes);
           } else if (entry.endsWith(".jar")) {
-            urls.add(new URL("jar", "", "file:/" + file.getAbsoluteFile() + "!/"));
+            urls.add(file.getAbsoluteFile().toURI().toURL());
             findClassesInJar(file, classes);
           }
         }

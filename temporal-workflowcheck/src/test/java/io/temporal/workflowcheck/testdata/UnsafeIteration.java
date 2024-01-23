@@ -34,8 +34,18 @@ public interface UnsafeIteration {
       }
 
       // SortedSet iteration is safe
-      for (var kv : new TreeSet<>(Set.of("a", "b"))) {
-        kv.length();
+      for (var v : new TreeSet<>(Set.of("a", "b"))) {
+        v.length();
+      }
+
+      // So is LinkedHashSet
+      for (var v : new LinkedHashSet<>(Set.of("a", "b"))) {
+        v.length();
+      }
+
+      // ArrayDeque is safe
+      for (var v : new ArrayDeque<>(Set.of("a", "b"))) {
+        v.length();
       }
 
       // Most streams are safe, except for sets

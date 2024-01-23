@@ -325,3 +325,8 @@ Currently, this project is missing many features:
   and save from having to reread the class files of that package at runtime
   * Also consider shipping with prebuilt config for Java standard library through Java 21
 * Support SARIF output for better integration with tooling like GitHub actions
+* Change output to work with IntelliJ's console linking better (see
+  [this SO answer](https://stackoverflow.com/questions/7930844/is-it-possible-to-have-clickable-class-names-in-console-output-in-intellij))
+* Support an HTML-formatted result with collapsible hierarchy
+* For very deep trees, support `[...]` by default to replace all but the two beginning and two end entries (with CLI
+  option to show more)

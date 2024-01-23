@@ -1,7 +1,9 @@
 package io.temporal.workflowcheck.testdata;
 
+import com.google.common.io.MoreFiles;
 import io.temporal.workflow.*;
 
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -13,7 +15,7 @@ import java.util.Random;
 @WorkflowInterface
 public interface BadCalls {
   @WorkflowMethod
-  void doWorkflow();
+  void doWorkflow() throws Exception;
 
   @SignalMethod
   void doSignal();
@@ -32,7 +34,7 @@ public interface BadCalls {
     private static String FIELD_NON_FINAL = "bar";
 
     @Override
-    public void doWorkflow() {
+    public void doWorkflow() throws Exception {
       // INVALID: Direct invalid call in workflow
       //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
       //   * method: doWorkflow()V
@@ -86,11 +88,16 @@ public interface BadCalls {
       new StringBuilder(FIELD_FINAL);
 
       // We want reflection to be considered safe
-      try {
-        getClass().getField("FIELD_NON_FINAL").get(null);
-      } catch (IllegalAccessException|NoSuchFieldException e) {
-        throw new RuntimeException(e);
-      }
+      getClass().getField("FIELD_NON_FINAL").get(null);
+
+      // INVALID: Indirect invalid call to third party library
+      //   * class: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
+      //   * method: doWorkflow()V
+      //   * accessedClass: io/temporal/workflowcheck/testdata/BadCalls$BadCallsImpl
+      //   * accessedMember: touchFile()V
+      //   * accessedCauseClass: com/google/common/io/MoreFiles
+      //   * accessedCauseMethod: touch(Ljava/nio/file/Path;)V
+      touchFile();
     }
 
     @Override
@@ -135,6 +142,10 @@ public interface BadCalls {
 
     private void currentInstant() {
       new Date();
+    }
+
+    private void touchFile() throws Exception {
+      MoreFiles.touch(Paths.get("tmp", "does-not-exist"));
     }
   }
 }
